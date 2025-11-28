@@ -1,4 +1,6 @@
 library(dplyr)
+library(shiny)
+library(DT)
 library(openxlsx)
 
 # Define o diretório base -------------------------------------------------
@@ -299,21 +301,21 @@ tb_procedimento.ds <- tb_procedimento.ds %>%
                      "F" = "Feminino",
                      "I" = "Indiferente/Ambos",
                      "N" = "Não se aplica"),
-    qt_maxima_execucao = recode(qt_maxima_execucao,
-                                "9999" = "Não se aplica"),
-    qt_dias_permanencia = recode(qt_dias_permanencia,
-                                 "9999" = "Não se aplica"),
-    qt_pontos = recode(qt_pontos,
-                       "9999" = "Não se aplica"),
+    qt_maxima_execucao = ifelse(qt_maxima_execucao == 9999,
+                                "Não se aplica",
+                                as.character(qt_maxima_execucao)), #substitui 9999 por "Não se aplica" e converte os demais para texto
+    qt_dias_permanencia = ifelse(qt_dias_permanencia == 9999,
+                                 "Não se aplica",
+                                 as.character(qt_dias_permanencia)),
+    qt_pontos = ifelse(qt_pontos == 9999,
+                       "Não se aplica",
+                       as.character(qt_pontos)),
     vl_idade_minima = ifelse(vl_idade_minima == 9999,
                              "Não se aplica",
                              paste0(round(vl_idade_minima / 12, 1), " anos")),
     vl_idade_maxima = ifelse(vl_idade_maxima == 9999,
                              "Não se aplica",
                              paste0(round(vl_idade_maxima / 12, 1), " anos"))
-    # vl_sh = ifelse(is.na(vl_sh), NA, paste0("R$ ", formatC(vl_sh, format = "f", digits = 2))),
-    # vl_sa = ifelse(is.na(vl_sa), NA, paste0("R$ ", formatC(vl_sa, format = "f", digits = 2))),
-    # vl_sp = ifelse(is.na(vl_sp), NA, paste0("R$ ", formatC(vl_sp, format = "f", digits = 2)))
   )
 
 # tb_financiamento
@@ -333,18 +335,18 @@ tb_financiamento.ds <- tb_financiamento.ds %>%
 rl_procedimento_compativel.ds <- rl_procedimento_compativel.ds %>%
   mutate(
     tp_compatibilidade = recode(tp_compatibilidade,
-                                "01" = "Compatível",
-                                "02" = "Incompatível/Excludente",
-                                "03" = "Concomitante")
+                                "1" = "Compatível",
+                                "2" = "Incompatível/Excludente",
+                                "3" = "Concomitante")
   )
 
 # rl_excecao_compatibilidade
 rl_excecao_compatibilidade.ds <- rl_excecao_compatibilidade.ds %>%
   mutate(
     tp_compatibilidade = recode(tp_compatibilidade,
-                                "01" = "Compatível",
-                                "02" = "Incompatível/Excludente",
-                                "03" = "Concomitante")
+                                "1" = "Compatível",
+                                "2" = "Incompatível/Excludente",
+                                "3" = "Concomitante")
   )
 
 # tb_cid
@@ -420,16 +422,12 @@ rl_procedimento_sia_sih.ds <- rl_procedimento_sia_sih.ds %>%
                              "H" = "Hospitalar")
   )
 
-# # RELACIONAMENTOS: ---------------------------------------------
-# 
-# 
-
 # Cria a planilha e formata como tabela ------------------------
 wb <- createWorkbook()
 add_formatted_sheet <- function(wb, sheet_name, data) {
-  addWorksheet(wb, sheet_name)
-  writeDataTable(wb, sheet_name, data, tableStyle = "TableStyleMedium9")
-  freezePane(wb, sheet_name, firstRow = TRUE)
+   addWorksheet(wb, sheet_name)
+   writeDataTable(wb, sheet_name, data, tableStyle = "TableStyleMedium9")
+   freezePane(wb, sheet_name, firstRow = TRUE)
 }
 
 # Adiciona as abas na planilha --------------------------------------------
@@ -468,5 +466,6 @@ add_formatted_sheet(wb, "tb_descricao_detalhe", tb_descricao_detalhe.ds)
 add_formatted_sheet(wb, "tb_regra_condicionada", tb_regra_condicionada.ds)
 add_formatted_sheet(wb, "rl_procedimento_regra_cond", rl_procedimento_regra_cond.ds)
 
-# Salva todo o trabalho e sobrescreve planilha ----------------------------
+# # Salva todo o trabalho e sobrescreve planilha ----------------------------
 saveWorkbook(wb, "tabelas_importadas_sigtap.xlsx", overwrite = TRUE)
+
