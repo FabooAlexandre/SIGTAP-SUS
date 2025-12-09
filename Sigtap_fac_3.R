@@ -5,6 +5,7 @@ library(DT)
 # Define o diretório base -------------------------------------------------
 base_dir <- "C:/Users/6044/Desktop/sigtap"
 
+# Basta colocar o arquivo ZIP com a base atualizada na subpasta -----------
 # Encontra a subpasta que começa com "TabelaUnificada_" -------------------
 path <- list.dirs(base_dir, full.names = TRUE, recursive = FALSE)
 path <- path[grepl("^TabelaUnificada_", basename(path))]
@@ -81,12 +82,12 @@ tb_procedimento.ds <- data.frame(
   qt_pontos            = as.numeric(substr(tb_procedimento, 271, 274)),
   vl_idade_minima      = as.numeric(substr(tb_procedimento, 275, 278)),
   vl_idade_maxima      = as.numeric(substr(tb_procedimento, 279, 282)),
-  vl_sh                = as.numeric(substr(tb_procedimento, 283, 292)) / 100,
-  vl_sa                = as.numeric(substr(tb_procedimento, 293, 302)) / 100,
-  vl_sp                = as.numeric(substr(tb_procedimento, 303, 312)) / 100,
-  co_financiamento     = substr(tb_procedimento, 313, 314),
-  co_rubrica           = substr(tb_procedimento, 315, 320),
-  dt_competencia       = substr(tb_procedimento, 321, 326)
+  vl_sh                = as.numeric(substr(tb_procedimento, 285, 294)) / 100,
+  vl_sa                = as.numeric(substr(tb_procedimento, 297, 306)) / 100,
+  vl_sp                = as.numeric(substr(tb_procedimento, 309, 318)) / 100,
+  co_financiamento     = substr(tb_procedimento, 319, 320),
+  co_rubrica           = substr(tb_procedimento, 321, 326),
+  dt_competencia       = substr(tb_procedimento, 331, 336)
 )
 
 tb_financiamento.ds <- data.frame(
@@ -302,7 +303,7 @@ tb_procedimento.ds <- tb_procedimento.ds %>%
                      "N" = "Não se aplica"),
     qt_maxima_execucao = ifelse(qt_maxima_execucao == 9999,
                                 "Não se aplica",
-                                as.character(qt_maxima_execucao)), #substitui 9999 por "Não se aplica" e converte os demais para texto
+                                as.character(qt_maxima_execucao)), 
     qt_dias_permanencia = ifelse(qt_dias_permanencia == 9999,
                                  "Não se aplica",
                                  as.character(qt_dias_permanencia)),
@@ -314,7 +315,13 @@ tb_procedimento.ds <- tb_procedimento.ds %>%
                              paste0(round(vl_idade_minima / 12, 1), " anos")),
     vl_idade_maxima = ifelse(vl_idade_maxima == 9999,
                              "Não se aplica",
-                             paste0(round(vl_idade_maxima / 12, 1), " anos"))
+                             paste0(round(vl_idade_maxima / 12, 1), " anos")),
+    vl_sh = ifelse(is.na(vl_sh), "Não informado",
+                   paste0("R$ ", formatC(vl_sh, format = "f", digits = 2, big.mark = ".", decimal.mark = ","))),
+    vl_sa = ifelse(is.na(vl_sa), "Não informado",
+                   paste0("R$ ", formatC(vl_sa, format = "f", digits = 2, big.mark = ".", decimal.mark = ","))),
+    vl_sp = ifelse(is.na(vl_sp), "Não informado",
+                   paste0("R$ ", formatC(vl_sp, format = "f", digits = 2, big.mark = ".", decimal.mark = ",")))
   )
 
 # tb_financiamento
@@ -428,7 +435,8 @@ ui <- fluidPage(
   sidebarLayout(
     sidebarPanel(
       width = 2,
-      textInput("proc_busca", "Digite o código do procedimento:", ""),
+      textInput("proc_busca", "Código do procedimento:", ""),
+      textInput("desc_busca", "Nome do procedimento:", ""),
       actionButton("buscar", "Pesquisar")
     ),
     
@@ -453,125 +461,135 @@ ui <- fluidPage(
 
 # Servidor ------------------------------------------------------
 
+# Os "joins" foram feitos nessa etapa por questão de performance
+
 server <- function(input, output, session) {
   
-  codigo <- eventReactive(input$buscar, {
-    req(input$proc_busca)
-    input$proc_busca
+  # Pesquisa: CÓDIGO x NOME
+  resultados <- eventReactive(input$buscar, {
+    if (input$proc_busca != "") {
+      tb_procedimento.ds %>% filter(co_procedimento == input$proc_busca)
+    } else if (input$desc_busca != "") {
+      tb_procedimento.ds %>% filter(grepl(input$desc_busca, no_procedimento, ignore.case = TRUE))
+    } else {
+      NULL
+    }
   })
   
-  # Aba Resumo
+  # Aba Resumo também mostra todos os resultados encontrados caso pesquise por nome do procedimento
   output$resumo_view <- renderDT({
-    req(codigo())
-    df <- tb_procedimento.ds %>%
-      filter(co_procedimento == codigo()) %>%
-      select(no_procedimento,tp_complexidade, tp_sexo,
+    req(resultados())
+    df <- resultados() %>%
+      select(co_procedimento, no_procedimento, tp_complexidade, tp_sexo,
              qt_maxima_execucao, qt_dias_permanencia,
-             vl_idade_minima, vl_idade_maxima)
-    datatable(df, options = list(dom = 't', scrollX = TRUE))
+             vl_idade_minima, vl_idade_maxima,
+             vl_sh, vl_sa, vl_sp)
+    datatable(df, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
   })
   
   # Aba CID
   output$cid_view <- renderDT({
-    req(codigo())
+    req(input$proc_busca)
     df <- rl_procedimento_cid.ds %>%
-      filter(co_procedimento == codigo()) %>%
+      filter(co_procedimento == input$proc_busca) %>%
       left_join(tb_cid.ds, by = "co_cid") %>%
       select(co_cid, no_cid, st_principal, tp_agravo, tp_estadio)
-    datatable(df, options = list(pageLength = 20, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 20, scrollX = TRUE), rownames = FALSE)
   })
   
   # Aba Ocupação
   output$ocupacao_view <- renderDT({
-    req(codigo())
+    req(input$proc_busca)
     df <- rl_procedimento_ocupacao.ds %>%
-      filter(co_procedimento == codigo()) %>%
+      filter(co_procedimento == input$proc_busca) %>%
       left_join(tb_ocupacao.ds, by = "co_ocupacao") %>%
       select(co_ocupacao, no_ocupacao)
-    datatable(df, options = list(pageLength = 20, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 20, scrollX = TRUE), rownames = FALSE)
   })
   
   # Aba Modalidade
   output$modalidade_view <- renderDT({
-    req(codigo())
+    req(input$proc_busca)
     df <- rl_procedimento_modalidade.ds %>%
-      filter(co_procedimento == codigo()) %>%
+      filter(co_procedimento == input$proc_busca) %>%
       left_join(tb_modalidade.ds, by = "co_modalidade") %>%
       select(co_modalidade, no_modalidade)
-    datatable(df, options = list(pageLength = 20, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 20, scrollX = TRUE), rownames = FALSE)
   })
   
   # Aba Detalhe
   output$detalhe_view <- renderDT({
-    req(codigo())
+    req(input$proc_busca)
     df <- rl_procedimento_detalhe.ds %>%
-      filter(co_procedimento == codigo()) %>%
+      filter(co_procedimento == input$proc_busca) %>%
       left_join(tb_detalhe.ds, by = "co_detalhe") %>%
       left_join(tb_descricao_detalhe.ds, by = "co_detalhe") %>%
       select(co_detalhe, no_detalhe, ds_detalhe)
-    datatable(df, options = list(pageLength = 20, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 20, scrollX = TRUE), rownames = FALSE)
   })
   
   # Aba Habilitação
   output$habilitacao_view <- renderDT({
-    req(codigo())
+    req(input$proc_busca)
     df <- rl_procedimento_habilitacao.ds %>%
-      filter(co_procedimento == codigo()) %>%
+      filter(co_procedimento == input$proc_busca) %>%
       left_join(tb_habilitacao.ds, by = "co_habilitacao") %>%
       select(co_habilitacao, no_habilitacao)
-    datatable(df, options = list(pageLength = 20, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 20, scrollX = TRUE), rownames = FALSE)
   })
   
   # Aba SIA/SIH
   output$siasih_view <- renderDT({
-    req(codigo())
+    req(input$proc_busca)
     df <- rl_procedimento_sia_sih.ds %>%
-      filter(co_procedimento == codigo()) %>%
+      filter(co_procedimento == input$proc_busca) %>%
       select(co_procedimento, co_procedimento_sia_sih) %>%  # remove tp_procedimento para evitar duplicacao nas tabelas
       left_join(tb_sia_sih.ds, by = "co_procedimento_sia_sih") %>%
       select(co_procedimento, co_procedimento_sia_sih,no_procedimento_sia_sih, tp_procedimento)
-    datatable(df, options = list(pageLength = 10, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
   })
   
   # Aba Registro
   output$registro_view <- renderDT({
-    req(codigo())
+    req(input$proc_busca)
     df <- rl_procedimento_registro.ds %>%
-      filter(co_procedimento == codigo()) %>%
+      filter(co_procedimento == input$proc_busca) %>%
       left_join(tb_registro.ds, by = "co_registro") %>%
       select(co_registro, no_registro)
-    datatable(df, options = list(pageLength = 20, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 20, scrollX = TRUE), rownames = FALSE)
   })
   
   # Aba Leito
   output$leito_view <- renderDT({
-    req(codigo())
+    req(input$proc_busca)
     df <- rl_procedimento_leito.ds %>%
-      filter(co_procedimento == codigo()) %>%
+      filter(co_procedimento == input$proc_busca) %>%
       left_join(tb_tipo_leito.ds, by = "co_tipo_leito") %>%
       select(co_tipo_leito, no_tipo_leito)
-    datatable(df, options = list(pageLength = 20, scrollX = TRUE))
+    datatable(df, options = list(pageLength = 20, scrollX = TRUE), rownames = FALSE)
   })
   
   # Aba Serviço
   output$servico_view <- renderDT({
-    req(codigo())
+    req(input$proc_busca)
     df <- rl_procedimento_servico.ds %>%
-      filter(co_procedimento == codigo()) %>%
+      filter(co_procedimento == input$proc_busca) %>%
       left_join(tb_servico.ds, by = "co_servico") %>%
-      select(co_servico, co_classificacao, no_servico)
-    datatable(df, options = list(pageLength = 20, scrollX = TRUE))
+      left_join(tb_servico_classificacao.ds, by = c("co_servico", "co_classificacao")) %>%
+      select(co_servico, no_servico, co_classificacao, no_classificacao)
+    datatable(df, options = list(pageLength = 10, scrollX = TRUE), rownames = FALSE)
   })
   
   # Aba Rubrica
   output$rubrica_view <- renderDT({
-    req(codigo())
+    req(input$proc_busca)
     df <- tb_procedimento.ds %>%
-      filter(co_procedimento == codigo()) %>%
+      filter(co_procedimento == input$proc_busca) %>%
       left_join(tb_rubrica.ds, by = "co_rubrica") %>%
-      select(no_procedimento, co_rubrica, no_rubrica)
-    datatable(df, options = list(pageLength = 20, scrollX = TRUE))
+      select(co_rubrica, no_rubrica)
+    datatable(df, options = list(pageLength = 20, scrollX = TRUE), rownames = FALSE)
   })
+  
 }
 
 # Executa o app -----------------------------------------------------------
